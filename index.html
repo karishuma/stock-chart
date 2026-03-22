@@ -135,13 +135,21 @@ function loadFavorites() {
 function saveFavorites(favs) {
   localStorage.setItem('kospi_favs', JSON.stringify(favs));
 }
-function addFavorite(code, name) {
+function addFavorite(code, name, yLine, wLine) {
   var favs = loadFavorites();
-  if (!favs.find(function(f) { return f.code === code; })) {
-    favs.push({ code: code, name: name || code });
-    saveFavorites(favs);
+  var existing = favs.find(function(f) { return f.code === code; });
+  if (existing) {
+    existing.name = name || existing.name;
+    if (yLine !== undefined) existing.yellowLine = yLine;
+    if (wLine !== undefined) existing.whiteLine = wLine;
+  } else {
+    favs.push({ code: code, name: name || code, yellowLine: yLine || null, whiteLine: wLine || null });
   }
+  saveFavorites(favs);
   refreshFavSelect();
+}
+function getFavorite(code) {
+  return loadFavorites().find(function(f) { return f.code === code; }) || null;
 }
 function removeFavorite(code) {
   var favs = loadFavorites().filter(function(f) { return f.code !== code; });
@@ -170,7 +178,8 @@ favSelect.addEventListener('change', function() {
   if (!code) return;
   if (stocks.find(function(s) { return s.code === code; })) return;
   if (stocks.length >= MAX_STOCKS) { showToast('최대 3개까지만 추가할 수 있습니다'); return; }
-  var stock = { code: code, name: code, interval: 3, timer: null, data: null, chart: null, el: null, yellowLine: null, whiteLine: null };
+  var fav = getFavorite(code);
+  var stock = { code: code, name: (fav && fav.name) || code, interval: 3, timer: null, data: null, chart: null, el: null, yellowLine: fav ? fav.yellowLine : null, whiteLine: fav ? fav.whiteLine : null };
   stocks.push(stock);
   createChartCard(stock);
   updateEmpty();
@@ -366,6 +375,10 @@ function createChartCard(stock) {
   chartsArea.appendChild(card);
   stock.el = card;
 
+  /* 저장된 라인값 복원 */
+  if (stock.yellowLine !== null) yInput.value = stock.yellowLine;
+  if (stock.whiteLine !== null) wInput.value = stock.whiteLine;
+
   var ctx = canvas.getContext('2d');
   var gradient = ctx.createLinearGradient(0, 0, 0, 180);
   gradient.addColorStop(0, 'rgba(96,165,250,0.25)');
@@ -414,6 +427,11 @@ function createChartCard(stock) {
     }
   });
 
+  /* 저장된 라인 annotation 즉시 반영 */
+  if (stock.yellowLine !== null || stock.whiteLine !== null) {
+    updateAnnotations(stock);
+  }
+
   sel.addEventListener('change', function(e) {
     stock.interval = parseInt(e.target.value);
     startTimer(stock);
@@ -429,17 +447,19 @@ function createChartCard(stock) {
     var v = parseFloat(e.target.value.replace(/,/g, ''));
     stock.yellowLine = isNaN(v) ? null : v;
     updateAnnotations(stock);
+    if (isFavorite(stock.code)) addFavorite(stock.code, stock.name, stock.yellowLine, stock.whiteLine);
   });
 
   wInput.addEventListener('change', function(e) {
     var v = parseFloat(e.target.value.replace(/,/g, ''));
     stock.whiteLine = isNaN(v) ? null : v;
     updateAnnotations(stock);
+    if (isFavorite(stock.code)) addFavorite(stock.code, stock.name, stock.yellowLine, stock.whiteLine);
   });
 
   saveChk.addEventListener('change', function() {
     if (saveChk.checked) {
-      addFavorite(stock.code, stock.name);
+      addFavorite(stock.code, stock.name, stock.yellowLine, stock.whiteLine);
       showToast(stock.name + ' 저장됨');
     } else {
       removeFavorite(stock.code);
@@ -459,9 +479,9 @@ function refreshStock(stock) {
       stock.el.querySelector('.stock-name').textContent = result.longName;
       stock.el.querySelector('.stock-code').textContent = getSymbol(stock.code);
 
-      /* 즐겨찾기에 이름 업데이트 */
+      /* 즐겨찾기에 이름 업데이트 (라인값 유지) */
       if (isFavorite(stock.code)) {
-        addFavorite(stock.code, result.longName);
+        addFavorite(stock.code, result.longName, stock.yellowLine, stock.whiteLine);
       }
 
       var price = result.price;
