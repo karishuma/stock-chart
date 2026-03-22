@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="KOSPI Chart">
 <title>KOSPI Real-Time Chart</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
 <style>
 :root{--bg:#0b0f19;--card:#111827;--border:#1e293b;--text1:#f1f5f9;--text2:#94a3b8;--text3:#64748b;--accent:#60a5fa;--up:#ef4444;--down:#3b82f6;--green:#22c55e}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -23,8 +24,7 @@ body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0}
 .input-row button{padding:10px 16px;border-radius:10px;border:none;font-size:14px;font-weight:600;cursor:pointer}
 .btn-add{background:var(--accent);color:#fff}.btn-cancel{background:var(--border);color:var(--text2)}
 .charts-area{padding:0 12px 20px}
-.chart-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;transition:all .3s ease;position:relative}
-.chart-card.expanded{position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;margin:0;border-radius:0;padding:20px 16px;display:flex;flex-direction:column}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;position:relative}
 .chart-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
 .chart-info{flex:1}.stock-name{font-size:15px;font-weight:700;color:var(--text1)}
 .stock-code{font-size:11px;color:var(--text3);margin-top:1px}
@@ -33,15 +33,17 @@ body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0}
 .chart-controls{display:flex;align-items:center;gap:6px}
 .refresh-select{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:5px 8px;color:var(--text2);font-size:11px;outline:none;-webkit-appearance:none}
 .remove-btn{width:28px;height:28px;border-radius:50%;background:transparent;border:1px solid var(--border);color:var(--text3);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.chart-wrap{height:160px;position:relative}
-.chart-card.expanded .chart-wrap{flex:1;height:auto}
-.chart-hint{text-align:center;font-size:10px;color:var(--text3);margin-top:6px}
-.chart-card.expanded .chart-hint{margin-top:10px}
+.chart-wrap{height:180px;position:relative}
 .chart-status{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text3);margin-top:4px}
 .status-dot{width:6px;height:6px;border-radius:50%}
 .status-dot.live{background:var(--green);animation:pulse 1.5s infinite}
 .status-dot.error{background:var(--up)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.line-inputs{display:flex;gap:6px;margin-top:8px;align-items:center}
+.line-inputs label{font-size:10px;font-weight:600;width:8px;text-align:center}
+.line-inputs input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text1);font-size:12px;outline:none;text-align:center}
+.line-inputs input.yellow-line{border-color:#eab308}
+.line-inputs input.white-line{border-color:#ffffff80}
 .empty-state{text-align:center;padding:80px 40px}
 .empty-icon{font-size:48px;margin-bottom:16px;opacity:.3}
 .empty-text{color:var(--text3);font-size:14px;line-height:1.6}
@@ -82,30 +84,9 @@ if(!/^\d{6}$/.test(code)){showToast('6자리 숫자 종목코드를 입력해주
 if(stocks.find(s=>s.code===code)){showToast('이미 추가된 종목입니다');return}
 if(stocks.length>=MAX_STOCKS){showToast('최대 3개까지만 추가할 수 있습니다');return}
 inputPanel.classList.remove('show');tickerInput.value='';
-const stock={code,name:code,interval:3,timer:null,data:null,chart:null,el:null,expanded:false};
+const stock={code,name:code,interval:3,timer:null,data:null,chart:null,el:null,yellowLine:null,whiteLine:null};
 stocks.push(stock);createChartCard(stock);updateEmpty();await refreshStock(stock);startTimer(stock)}
-function createChartCard(stock){const card=document.createElement('div');card.className='chart-card';
-card.innerHTML='<div class="chart-top"><div class="chart-info"><div class="stock-name">'+stock.code+'</div><div class="stock-code">'+stock.code+'.KS</div><div class="stock-price">--</div><div class="stock-change">--</div><div class="chart-status"><div class="status-dot"></div><span class="status-text">로딩 중...</span></div></div><div class="chart-controls"><select class="refresh-select" title="리프레시 간격">'+[1,2,3,5,7,10].map(m=>'<option value="'+m+'" '+(m===3?'selected':'')+'>'+m+'분</option>').join('')+'</select><button class="remove-btn" title="삭제">&times;</button></div></div><div class="chart-wrap"><canvas></canvas></div><div class="chart-hint">더블탭으로 확대</div>';
-chartsArea.appendChild(card);stock.el=card;
-const ctx=card.querySelector('canvas').getContext('2d');
-const gradient=ctx.createLinearGradient(0,0,0,160);
-gradient.addColorStop(0,'rgba(96,165,250,0.25)');gradient.addColorStop(1,'rgba(96,165,250,0.01)');
-stock.chart=new Chart(ctx,{type:'line',data:{labels:[],datasets:[{data:[],borderColor:'#60a5fa',borderWidth:1.8,pointRadius:0,fill:true,backgroundColor:gradient,tension:0.3}]},
-options:{responsive:true,maintainAspectRatio:false,animation:{duration:300},interaction:{mode:'index',intersect:false},
-plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e293b',titleColor:'#94a3b8',bodyColor:'#f1f5f9',borderColor:'#334155',borderWidth:1,padding:8,displayColors:false,
-callbacks:{label:c=>c.parsed.y!==null?c.parsed.y.toLocaleString()+'원':''}}},
-scales:{x:{grid:{color:'#1e293b30'},ticks:{color:'#475569',maxTicksLimit:5,font:{size:10}}},
-y:{grid:{color:'#1e293b30'},ticks:{color:'#475569',font:{size:10},callback:v=>(v/1000).toFixed(0)+'K'}}}}});
-card.querySelector('.refresh-select').addEventListener('change',e=>{stock.interval=parseInt(e.target.value);startTimer(stock);showToast(stock.name+' 리프레시: '+stock.interval+'분')});
-card.querySelector('.remove-btn').addEventListener('click',e=>{e.stopPropagation();removeStock(stock)});
-let lastTap=0;card.addEventListener('touchend',e=>{const now=Date.now();if(now-lastTap<300){e.preventDefault();toggleExpand(stock)}lastTap=now});
-card.addEventListener('dblclick',()=>toggleExpand(stock))}
-function toggleExpand(stock){stock.expanded=!stock.expanded;
-if(stock.expanded){stock.el.classList.add('expanded');stock.el.querySelector('.chart-hint').textContent='더블탭으로 축소';
-stocks.forEach(s=>{if(s!==stock&&s.el)s.el.style.display='none'})}
-else{stock.el.classList.remove('expanded');stock.el.querySelector('.chart-hint').textContent='더블탭으로 확대';
-stocks.forEach(s=>{if(s.el)s.el.style.display=''})}
-setTimeout(()=>stock.chart.resize(),50)}
+function updateAnnotations(stock){
 async function refreshStock(stock){const statusDot=stock.el.querySelector('.status-dot');const statusText=stock.el.querySelector('.status-text');
 const result=await fetchStockData(stock.code);
 if(result.ok){stock.data=result;stock.name=result.longName;
@@ -119,7 +100,7 @@ changeEl.textContent=sign+Math.round(change).toLocaleString()+' ('+sign+pct.toFi
 changeEl.className='stock-change '+(isUp?'up':'down');changeEl.style.color=isUp?'var(--up)':'var(--down)';
 stock.chart.data.labels=result.labels;stock.chart.data.datasets[0].data=result.prices;
 const lineColor=isUp?'#ef4444':'#3b82f6';stock.chart.data.datasets[0].borderColor=lineColor;
-const ctx=stock.chart.ctx;const gradient=ctx.createLinearGradient(0,0,0,160);
+const ctx=stock.chart.ctx;const gradient=ctx.createLinearGradient(0,0,0,180);
 gradient.addColorStop(0,(isUp?'rgba(239,68,68,':'rgba(59,130,246,')+'0.2)');
 gradient.addColorStop(1,(isUp?'rgba(239,68,68,':'rgba(59,130,246,')+'0.01)');
 stock.chart.data.datasets[0].backgroundColor=gradient;stock.chart.update();
@@ -133,3 +114,23 @@ function updateEmpty(){emptyState.style.display=stocks.length===0?'':'none'}
 </script>
 </body>
 </html>
+const annotations={};
+if(stock.yellowLine){annotations.yellowLine={type:'line',yMin:stock.yellowLine,yMax:stock.yellowLine,borderColor:'#eab308',borderWidth:1.5,borderDash:[6,3],label:{display:true,content:stock.yellowLine.toLocaleString(),position:'start',backgroundColor:'#eab30890',color:'#000',font:{size:9},padding:2}}}
+if(stock.whiteLine){annotations.whiteLine={type:'line',yMin:stock.whiteLine,yMax:stock.whiteLine,borderColor:'#ffffff',borderWidth:1.5,borderDash:[6,3],label:{display:true,content:stock.whiteLine.toLocaleString(),position:'start',backgroundColor:'#ffffff90',color:'#000',font:{size:9},padding:2}}}
+stock.chart.options.plugins.annotation={annotations};stock.chart.update()}
+function createChartCard(stock){const card=document.createElement('div');card.className='chart-card';
+card.innerHTML='<div class="chart-top"><div class="chart-info"><div class="stock-name">'+stock.code+'</div><div class="stock-code">'+stock.code+'.KS</div><div class="stock-price">--</div><div class="stock-change">--</div><div class="chart-status"><div class="status-dot"></div><span class="status-text">로딩 중...</span></div></div><div class="chart-controls"><select class="refresh-select" title="리프레시 간격">'+[1,2,3,5,7,10].map(m=>'<option value="'+m+'" '+(m===3?'selected':'')+'>'+m+'분</option>').join('')+'</select><button class="remove-btn" title="삭제">&times;</button></div></div><div class="chart-wrap"><canvas></canvas></div><div class="line-inputs"><label style="color:#eab308">Y</label><input type="text" class="yellow-line" placeholder="노랑선 가격" inputmode="decimal"><label style="color:#fff">W</label><input type="text" class="white-line" placeholder="흰색선 가격" inputmode="decimal"></div>';
+chartsArea.appendChild(card);stock.el=card;
+const ctx=card.querySelector('canvas').getContext('2d');
+const gradient=ctx.createLinearGradient(0,0,0,180);
+gradient.addColorStop(0,'rgba(96,165,250,0.25)');gradient.addColorStop(1,'rgba(96,165,250,0.01)');
+stock.chart=new Chart(ctx,{type:'line',data:{labels:[],datasets:[{data:[],borderColor:'#60a5fa',borderWidth:1.8,pointRadius:0,fill:true,backgroundColor:gradient,tension:0.3}]},
+options:{responsive:true,maintainAspectRatio:false,animation:{duration:300},interaction:{mode:'index',intersect:false},
+plugins:{legend:{display:false},annotation:{annotations:{}},tooltip:{backgroundColor:'#1e293b',titleColor:'#94a3b8',bodyColor:'#f1f5f9',borderColor:'#334155',borderWidth:1,padding:8,displayColors:false,
+callbacks:{label:c=>c.parsed.y!==null?c.parsed.y.toLocaleString()+'원':''}}},
+scales:{x:{grid:{color:'#1e293b30'},ticks:{color:'#475569',maxTicksLimit:5,font:{size:10}}},
+y:{grid:{color:'#1e293b30'},ticks:{color:'#475569',font:{size:10},callback:v=>(v/1000).toFixed(0)+'K'}}}}});
+card.querySelector('.refresh-select').addEventListener('change',e=>{stock.interval=parseInt(e.target.value);startTimer(stock);showToast(stock.name+' 리프레시: '+stock.interval+'분')});
+card.querySelector('.remove-btn').addEventListener('click',e=>{e.stopPropagation();removeStock(stock)});
+card.querySelector('.yellow-line').addEventListener('change',e=>{const v=parseFloat(e.target.value.replace(/,/g,''));stock.yellowLine=isNaN(v)?null:v;updateAnnotations(stock)});
+card.querySelector('.white-line').addEventListener('change',e=>{const v=parseFloat(e.target.value.replace(/,/g,''));stock.whiteLine=isNaN(v)?null:v;updateAnnotations(stock)})}
