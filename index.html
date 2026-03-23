@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="KOSPI Chart">
-<title>KOSPI Real-Time Chart</title>
+<meta name="apple-mobile-web-app-title" content="Stock Chart">
+<title>Stock Chart</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
 <style>
@@ -32,6 +32,7 @@ body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; }
 .header-right { display:flex; align-items:center; gap:8px; }
 .fav-select { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:6px 10px; color:var(--text2); font-size:13px; outline:none; -webkit-appearance:none; min-width:100px; max-width:160px; }
 .add-btn { width:36px; height:36px; border-radius:50%; background:var(--accent); color:#fff; border:none; font-size:22px; line-height:36px; text-align:center; cursor:pointer; flex-shrink:0; }
+.gear-btn { width:32px; height:32px; border-radius:50%; background:transparent; border:1px solid var(--border); color:var(--text3); font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 
 .input-panel { display:none; padding:0 16px 12px; }
 .input-panel.show { display:block; }
@@ -41,6 +42,11 @@ body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; }
 .input-row button { padding:10px 16px; border-radius:10px; border:none; font-size:14px; font-weight:600; cursor:pointer; }
 .btn-add { background:var(--accent); color:#fff; }
 .btn-cancel { background:var(--border); color:var(--text2); }
+
+.apikey-panel { display:none; padding:0 16px 12px; }
+.apikey-panel.show { display:block; }
+.apikey-info { font-size:11px; color:var(--text3); margin-bottom:8px; line-height:1.5; }
+.apikey-info a { color:var(--accent); text-decoration:none; }
 
 .charts-area { padding:0 12px 20px; }
 .chart-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:12px; position:relative; }
@@ -81,10 +87,20 @@ body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; }
 <body>
 
 <div class="header">
-  <h1><span>KOSPI</span> Chart</h1>
+  <h1><span>Stock</span> Chart</h1>
   <div class="header-right">
     <select class="fav-select" id="favSelect"><option value="">-- 저장 종목 --</option></select>
     <button class="add-btn" id="addToggle">+</button>
+    <button class="gear-btn" id="gearBtn" title="API 설정">&#9881;</button>
+  </div>
+</div>
+
+<div class="apikey-panel" id="apikeyPanel">
+  <div class="apikey-info">Alpha Vantage API Key 필요 (무료: 25회/일)<br><a href="https://www.alphavantage.co/support/#api-key" target="_blank">무료 API Key 받기</a></div>
+  <div class="input-row">
+    <input type="text" id="apikeyInput" placeholder="API Key 입력" maxlength="20">
+    <button class="btn-add" id="saveApikey">저장</button>
+    <button class="btn-cancel" id="cancelApikey">닫기</button>
   </div>
 </div>
 
@@ -106,7 +122,7 @@ body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; }
 <div class="toast" id="toast"></div>
 
 <script>
-var CORS_PROXY = 'https://corsproxy.io/?';
+var AV_BASE = 'https://www.alphavantage.co/query';
 var MAX_STOCKS = 3;
 var stocks = [];
 
@@ -119,6 +135,11 @@ var addStockBtn = document.getElementById('addStock');
 var cancelAddBtn = document.getElementById('cancelAdd');
 var toastEl = document.getElementById('toast');
 var favSelect = document.getElementById('favSelect');
+var gearBtn = document.getElementById('gearBtn');
+var apikeyPanel = document.getElementById('apikeyPanel');
+var apikeyInput = document.getElementById('apikeyInput');
+var saveApikeyBtn = document.getElementById('saveApikey');
+var cancelApikeyBtn = document.getElementById('cancelApikey');
 
 var toastTimer;
 function showToast(msg) {
@@ -128,12 +149,36 @@ function showToast(msg) {
   toastTimer = setTimeout(function() { toastEl.classList.remove('show'); }, 2500);
 }
 
+/* ---- API Key 관리 ---- */
+function getApiKey() {
+  return localStorage.getItem('av_apikey') || '';
+}
+function setApiKey(key) {
+  localStorage.setItem('av_apikey', key.trim());
+}
+
+gearBtn.addEventListener('click', function() {
+  apikeyPanel.classList.toggle('show');
+  if (apikeyPanel.classList.contains('show')) {
+    apikeyInput.value = getApiKey();
+    apikeyInput.focus();
+  }
+});
+saveApikeyBtn.addEventListener('click', function() {
+  var key = apikeyInput.value.trim();
+  if (!key) { showToast('API Key를 입력해주세요'); return; }
+  setApiKey(key);
+  apikeyPanel.classList.remove('show');
+  showToast('API Key 저장됨');
+});
+cancelApikeyBtn.addEventListener('click', function() { apikeyPanel.classList.remove('show'); });
+
 /* ---- 즐겨찾기 localStorage ---- */
 function loadFavorites() {
-  try { return JSON.parse(localStorage.getItem('kospi_favs') || '[]'); } catch(e) { return []; }
+  try { return JSON.parse(localStorage.getItem('stock_favs') || '[]'); } catch(e) { return []; }
 }
 function saveFavorites(favs) {
-  localStorage.setItem('kospi_favs', JSON.stringify(favs));
+  localStorage.setItem('stock_favs', JSON.stringify(favs));
 }
 function addFavorite(code, name, yLine, wLine) {
   var favs = loadFavorites();
@@ -179,7 +224,7 @@ favSelect.addEventListener('change', function() {
   if (stocks.find(function(s) { return s.code === code; })) return;
   if (stocks.length >= MAX_STOCKS) { showToast('최대 3개까지만 추가할 수 있습니다'); return; }
   var fav = getFavorite(code);
-  var stock = { code: code, name: (fav && fav.name) || code, interval: 3, timer: null, data: null, chart: null, el: null, yellowLine: fav ? fav.yellowLine : null, whiteLine: fav ? fav.whiteLine : null };
+  var stock = { code: code, name: (fav && fav.name) || code, interval: 5, timer: null, data: null, chart: null, el: null, yellowLine: fav ? fav.yellowLine : null, whiteLine: fav ? fav.whiteLine : null };
   stocks.push(stock);
   createChartCard(stock);
   updateEmpty();
@@ -188,6 +233,12 @@ favSelect.addEventListener('change', function() {
 });
 
 addToggle.addEventListener('click', function() {
+  if (!getApiKey()) {
+    apikeyPanel.classList.add('show');
+    apikeyInput.focus();
+    showToast('먼저 API Key를 설정해주세요');
+    return;
+  }
   if (stocks.length >= MAX_STOCKS) { showToast('최대 3개까지만 추가할 수 있습니다'); return; }
   inputPanel.classList.toggle('show');
   if (inputPanel.classList.contains('show')) tickerInput.focus();
@@ -215,28 +266,49 @@ function formatPrice(price, code) {
 }
 
 function fetchStockData(code) {
+  var apikey = getApiKey();
+  if (!apikey) return Promise.resolve({ ok: false, error: 'API Key 없음' });
+
   var symbol = getSymbol(code);
-  var url = CORS_PROXY + 'https://query1.finance.yahoo.com/v8/finance/chart/' + symbol + '?range=1d&interval=5m';
+  var url = AV_BASE + '?function=TIME_SERIES_INTRADAY&symbol=' + encodeURIComponent(symbol) + '&interval=5min&outputsize=compact&apikey=' + apikey;
+
   return fetch(url).then(function(res) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   }).then(function(json) {
-    var result = json.chart.result[0];
-    var meta = result.meta;
-    var timestamps = result.timestamp || [];
-    var closes = result.indicators.quote[0].close || [];
-    var labels = timestamps.map(function(t) {
-      var d = new Date(t * 1000);
-      return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
-    });
+    /* API 에러 체크 */
+    if (json['Error Message']) throw new Error('종목을 찾을 수 없습니다');
+    if (json['Note']) throw new Error('API 호출 한도 초과');
+    if (json['Information']) throw new Error(json['Information']);
+
+    var meta = json['Meta Data'];
+    var tsKey = 'Time Series (5min)';
+    var timeSeries = json[tsKey];
+    if (!meta || !timeSeries) throw new Error('데이터 없음');
+
+    var symbolName = meta['2. Symbol'] || symbol;
+
+    /* 시간순 정렬 (오래된 것 먼저) */
+    var entries = Object.keys(timeSeries).sort();
+    var labels = [];
+    var prices = [];
     var kr = isKRCode(code);
-    var prices = closes.map(function(c) { return c !== null ? (kr ? Math.round(c) : Math.round(c * 100) / 100) : null; });
+
+    entries.forEach(function(ts) {
+      var d = new Date(ts);
+      labels.push(d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'));
+      var closeVal = parseFloat(timeSeries[ts]['4. close']);
+      prices.push(kr ? Math.round(closeVal) : Math.round(closeVal * 100) / 100);
+    });
+
+    var currentPrice = prices.length > 0 ? prices[prices.length - 1] : 0;
+    var openPrice = prices.length > 0 ? prices[0] : 0;
+
     return {
-      name: meta.symbol.replace('.KS', ''),
-      longName: meta.longName || meta.shortName || code,
-      price: meta.regularMarketPrice,
-      prevClose: meta.chartPreviousClose || meta.previousClose,
-      currency: meta.currency || (kr ? 'KRW' : 'USD'),
+      name: symbolName.replace('.KS', ''),
+      longName: symbolName.replace('.KS', ''),
+      price: currentPrice,
+      prevClose: openPrice,
       labels: labels,
       prices: prices,
       ok: true
@@ -247,6 +319,19 @@ function fetchStockData(code) {
   });
 }
 
+/* 종목 검색 (이름 가져오기) */
+function searchSymbolName(code) {
+  var apikey = getApiKey();
+  if (!apikey) return Promise.resolve(code);
+  var symbol = getSymbol(code);
+  var url = AV_BASE + '?function=SYMBOL_SEARCH&keywords=' + encodeURIComponent(symbol) + '&apikey=' + apikey;
+  return fetch(url).then(function(res) { return res.json(); }).then(function(json) {
+    var matches = json['bestMatches'] || [];
+    if (matches.length > 0) return matches[0]['2. name'] || code;
+    return code;
+  }).catch(function() { return code; });
+}
+
 function addNewStock() {
   var code = tickerInput.value.trim();
   if (!code) { showToast('종목코드를 입력해주세요'); return; }
@@ -254,11 +339,12 @@ function addNewStock() {
   code = /^\d{6}$/.test(code) ? code : code.toUpperCase();
   if (stocks.find(function(s) { return s.code === code; })) { showToast('이미 추가된 종목입니다'); return; }
   if (stocks.length >= MAX_STOCKS) { showToast('최대 3개까지만 추가할 수 있습니다'); return; }
+  if (!getApiKey()) { showToast('먼저 API Key를 설정해주세요'); apikeyPanel.classList.add('show'); return; }
 
   inputPanel.classList.remove('show');
   tickerInput.value = '';
 
-  var stock = { code: code, name: code, interval: 3, timer: null, data: null, chart: null, el: null, yellowLine: null, whiteLine: null };
+  var stock = { code: code, name: code, interval: 5, timer: null, data: null, chart: null, el: null, yellowLine: null, whiteLine: null };
   stocks.push(stock);
   createChartCard(stock);
   updateEmpty();
@@ -295,7 +381,7 @@ function createChartCard(stock) {
 
   var infoDiv = document.createElement('div');
   infoDiv.className = 'chart-info';
-  infoDiv.innerHTML = '<div class="stock-name">' + stock.code + '</div>' +
+  infoDiv.innerHTML = '<div class="stock-name">' + stock.name + '</div>' +
     '<div class="stock-code">' + getSymbol(stock.code) + '</div>' +
     '<div class="stock-price">--</div>' +
     '<div class="stock-change">--</div>' +
@@ -307,11 +393,11 @@ function createChartCard(stock) {
   var sel = document.createElement('select');
   sel.className = 'refresh-select';
   sel.title = '리프레시 간격';
-  [1,2,3,5,7,10].forEach(function(m) {
+  [3,5,10,15,30].forEach(function(m) {
     var opt = document.createElement('option');
     opt.value = m;
     opt.textContent = m + '분';
-    if (m === 3) opt.selected = true;
+    if (m === 5) opt.selected = true;
     sel.appendChild(opt);
   });
 
@@ -422,7 +508,7 @@ function createChartCard(stock) {
       },
       scales: {
         x: { grid: { color: '#1e293b30' }, ticks: { color: '#475569', maxTicksLimit: 5, font: { size: 10 } } },
-        y: { grid: { color: '#1e293b30' }, ticks: { color: '#475569', font: { size: 10 }, callback: function(v) { return (v/1000).toFixed(0) + 'K'; } } }
+        y: { grid: { color: '#1e293b30' }, ticks: { color: '#475569', font: { size: 10 }, callback: function(v) { return v >= 1000 ? (v/1000).toFixed(0) + 'K' : v.toFixed(1); } } }
       }
     }
   });
@@ -475,18 +561,27 @@ function refreshStock(stock) {
   fetchStockData(stock.code).then(function(result) {
     if (result.ok) {
       stock.data = result;
-      stock.name = result.longName;
-      stock.el.querySelector('.stock-name').textContent = result.longName;
+      /* 첫 로드시 종목명 검색 */
+      if (stock.name === stock.code && result.longName === stock.code) {
+        searchSymbolName(stock.code).then(function(name) {
+          stock.name = name;
+          stock.el.querySelector('.stock-name').textContent = name;
+          if (isFavorite(stock.code)) addFavorite(stock.code, name, stock.yellowLine, stock.whiteLine);
+        });
+      } else {
+        stock.name = result.longName || stock.name;
+        stock.el.querySelector('.stock-name').textContent = stock.name;
+      }
       stock.el.querySelector('.stock-code').textContent = getSymbol(stock.code);
 
       /* 즐겨찾기에 이름 업데이트 (라인값 유지) */
       if (isFavorite(stock.code)) {
-        addFavorite(stock.code, result.longName, stock.yellowLine, stock.whiteLine);
+        addFavorite(stock.code, stock.name, stock.yellowLine, stock.whiteLine);
       }
 
       var price = result.price;
       var change = price - result.prevClose;
-      var pct = (change / result.prevClose * 100);
+      var pct = result.prevClose !== 0 ? (change / result.prevClose * 100) : 0;
       var isUp = change >= 0;
 
       stock.el.querySelector('.stock-price').textContent = formatPrice(price, stock.code);
@@ -518,8 +613,8 @@ function refreshStock(stock) {
       statusText.textContent = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0') + ' 갱신';
     } else {
       statusDot.className = 'status-dot error';
-      statusText.textContent = '데이터 오류';
-      showToast(stock.code + ': 데이터를 가져올 수 없습니다');
+      statusText.textContent = result.error || '데이터 오류';
+      showToast(stock.code + ': ' + (result.error || '데이터를 가져올 수 없습니다'));
     }
   });
 }
@@ -540,6 +635,11 @@ function removeStock(stock) {
 
 function updateEmpty() {
   emptyState.style.display = stocks.length === 0 ? '' : 'none';
+}
+
+/* 시작 시 API Key 없으면 설정 패널 자동 표시 */
+if (!getApiKey()) {
+  apikeyPanel.classList.add('show');
 }
 </script>
 </body>
